@@ -13,6 +13,7 @@ export class MB {
     private getRefNo(): string;
     private mbRequest(data: { path: string, json?: object, headers?: object }): Promise<any>;
     public getBalance(): Promise<BalanceList | undefined>;
+    public getLoginData(): Promise<any>;
     public getTransactionsHistory(data: { accountNumber: string, fromDate: string, toDate: string }): Promise<TransactionInfo[] | undefined>;
 }
 
