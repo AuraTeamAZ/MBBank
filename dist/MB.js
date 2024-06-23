@@ -54,6 +54,18 @@ class MB {
      * A private function to process MB's captcha and get Session ID.
      */
     async login() {
+        const loginRes = await this.getLoginData();
+        if (loginRes.result.ok) {
+            this.sessionId = loginRes.sessionId;
+        }
+        else if (loginRes.result.responseCode === "GW283") {
+            await this.login();
+        }
+        else {
+            throw new Error("Login failed: (" + loginRes.result.responseCode + "): " + loginRes.result.message);
+        }
+    }
+    async getLoginData() {
         // Request ID/Ref ID for MB
         const rId = (0, Global_1.getTimeNow)();
         const headers = Global_1.defaultHeaders;
@@ -106,15 +118,7 @@ class MB {
             }),
         });
         const loginRes = await loginReq.body.json();
-        if (loginRes.result.ok) {
-            this.sessionId = loginRes.sessionId;
-        }
-        else if (loginRes.result.responseCode === "GW283") {
-            await this.login();
-        }
-        else {
-            throw new Error("Login failed: (" + loginRes.result.responseCode + "): " + loginRes.result.message);
-        }
+        return loginRes;
     }
     /**
      * A private function to calculate the reference ID required by MB.
