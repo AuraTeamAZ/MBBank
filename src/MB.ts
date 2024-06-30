@@ -67,7 +67,7 @@ export default class MB {
             await this.login();
         }
         else {
-            throw new Error("Login failed: (" + loginRes.result.responseCode + "): " + loginRes.result.message);
+            console.log("Login failed: (" + loginRes.result.responseCode + "): " + loginRes.result.message);
         }
     }
 
