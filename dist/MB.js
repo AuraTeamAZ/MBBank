@@ -10,6 +10,7 @@ const replace_color_1 = __importDefault(require("replace-color"));
 const jimp_1 = __importDefault(require("jimp"));
 const node_crypto_1 = require("node:crypto");
 const moment_1 = __importDefault(require("moment"));
+const LoadWasm_1 = __importDefault(require("./utils/LoadWasm"));
 /**
  * Main client class for all activities.
  */
@@ -38,6 +39,7 @@ class MB {
      * Undici client. Use it for sending the request to API.
      */
     client = new undici_1.Client("https://online.mbbank.com.vn");
+    wasmData;
     /**
      * Login to your MB account via username and password.
      * @param data - Your MB Bank login credentials: username and password.
@@ -72,7 +74,7 @@ class MB {
         headers["X-Request-Id"] = rId;
         const captchaReq = await this.client.request({
             method: "POST",
-            path: "/retail-web-internetbankingms/getCaptchaImage",
+            path: "/api/retail-web-internetbankingms/getCaptchaImage",
             headers,
             body: JSON.stringify({
                 "sessionId": "",
@@ -104,17 +106,31 @@ class MB {
         captchaBuffer = await captchaImagePRCLine2.getBufferAsync(jimp_1.default.MIME_PNG);
         // Get captcha via OCR
         const captchaContent = (await (0, node_tesseract_ocr_1.recognize)(captchaBuffer, Global_1.defaultTesseractConfig)).replaceAll("\n", "").replaceAll(" ", "").slice(0, -1);
+        // wasm
+        if (!this.wasmData) {
+            const wasm = await this.client.request({
+                method: "GET",
+                path: "/assets/wasm/main.wasm",
+                headers: Global_1.defaultHeaders,
+            });
+            this.wasmData = Buffer.from(await wasm.body.arrayBuffer());
+        }
+        // Create Data
+        const requestData = {
+            userId: this.username,
+            password: (0, node_crypto_1.createHash)("md5").update(this.password).digest("hex"),
+            captcha: captchaContent,
+            ibAuthen2faString: Global_1.FPR,
+            sessionId: null,
+            refNo: (0, Global_1.getTimeNow)(),
+            deviceIdCommon: this.deviceId,
+        };
         const loginReq = await this.client.request({
             method: "POST",
-            path: "/retail_web/internetbanking/doLogin",
+            path: "/api/retail_web/internetbanking/v2.0/doLogin",
             headers: Global_1.defaultHeaders,
             body: JSON.stringify({
-                "userId": this.username,
-                "password": (0, node_crypto_1.createHash)("md5").update(this.password).digest("hex"),
-                "captcha": captchaContent,
-                "sessionId": "",
-                "refNo": (0, Global_1.getTimeNow)(),
-                "deviceIdCommon": this.deviceId,
+                dataEnc: await (0, LoadWasm_1.default)(this.wasmData, requestData, "0"),
             }),
         });
         const loginRes = await loginReq.body.json();

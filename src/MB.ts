@@ -1,5 +1,5 @@
 import { Client } from "undici";
-import { defaultHeaders, defaultTesseractConfig, generateDeviceId, getTimeNow } from "./utils/Global";
+import { defaultHeaders, defaultTesseractConfig, FPR, generateDeviceId, getTimeNow } from "./utils/Global";
 import { recognize } from "node-tesseract-ocr";
 import { CaptchaResponse } from "./typings/MBLogin";
 import replaceColor from "replace-color";
@@ -7,6 +7,7 @@ import Jimp from "jimp";
 import { createHash } from "node:crypto";
 import { BalanceData, BalanceList, TransactionInfo } from "./typings/MBApi";
 import moment from "moment";
+import wasmEnc from "./utils/LoadWasm";
 
 /**
  * Main client class for all activities.
@@ -40,6 +41,8 @@ export default class MB {
      * Undici client. Use it for sending the request to API.
      */
     public client = new Client("https://online.mbbank.com.vn");
+
+    private wasmData!: Buffer;
 
     /**
      * Login to your MB account via username and password.
@@ -80,7 +83,7 @@ export default class MB {
 
         const captchaReq = await this.client.request({
             method: "POST",
-            path: "/retail-web-internetbankingms/getCaptchaImage",
+            path: "/api/retail-web-internetbankingms/getCaptchaImage",
             headers,
             body: JSON.stringify({
                 "sessionId": "",
@@ -119,17 +122,33 @@ export default class MB {
         // Get captcha via OCR
         const captchaContent = (await recognize(captchaBuffer, defaultTesseractConfig)).replaceAll("\n", "").replaceAll(" ", "").slice(0, -1);
 
+        // wasm
+        if (!this.wasmData) {
+            const wasm = await this.client.request({
+                method: "GET",
+                path: "/assets/wasm/main.wasm",
+                headers: defaultHeaders,
+            });
+            this.wasmData = Buffer.from(await wasm.body.arrayBuffer());
+        }
+
+        // Create Data
+        const requestData = {
+            userId: this.username,
+            password: createHash("md5").update(this.password).digest("hex"),
+            captcha: captchaContent,
+            ibAuthen2faString: FPR,
+            sessionId: null,
+            refNo: getTimeNow(),
+            deviceIdCommon: this.deviceId,
+        };
+
         const loginReq = await this.client.request({
             method: "POST",
-            path: "/retail_web/internetbanking/doLogin",
+            path: "/api/retail_web/internetbanking/v2.0/doLogin",
             headers: defaultHeaders,
             body: JSON.stringify({
-                "userId": this.username,
-                "password": createHash("md5").update(this.password).digest("hex"),
-                "captcha": captchaContent,
-                "sessionId": "",
-                "refNo": getTimeNow(),
-                "deviceIdCommon": this.deviceId,
+                dataEnc: await wasmEnc(this.wasmData, requestData, "0"),
             }),
         });
 
